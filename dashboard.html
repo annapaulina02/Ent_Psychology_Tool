@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lecturer Dashboard — Entrepreneurial Personality Profile</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f7f4; color: #1a1a1a; min-height: 100vh; }
+
+  .header { background: #2d2654; color: white; padding: 1.5rem 2rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+  .header h1 { font-size: 1.3rem; font-weight: 600; }
+  .header p { font-size: 0.8rem; opacity: 0.7; margin-top: 2px; }
+  .refresh-btn { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 0.5rem 1.25rem; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: all 0.15s; }
+  .refresh-btn:hover { background: rgba(255,255,255,0.25); }
+  .refresh-btn.spinning { opacity: 0.6; pointer-events: none; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 2rem; }
+  .stat-card { background: white; border-radius: 10px; padding: 1rem 1.25rem; border: 0.5px solid #e0ddd5; }
+  .stat-label { font-size: 0.75rem; color: #999; margin-bottom: 4px; }
+  .stat-value { font-size: 1.6rem; font-weight: 600; color: #2d2654; }
+  .stat-sub { font-size: 0.75rem; color: #aaa; margin-top: 2px; }
+
+  .card { background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; border: 0.5px solid #e0ddd5; }
+  .card h2 { font-size: 1rem; font-weight: 600; color: #2d2654; margin-bottom: 1.25rem; }
+
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+  @media (max-width: 680px) { .charts-grid { grid-template-columns: 1fr; } }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  thead tr { border-bottom: 1.5px solid #e0ddd5; }
+  th { text-align: left; padding: 0.5rem 0.75rem; font-size: 0.75rem; color: #999; font-weight: 500; white-space: nowrap; }
+  td { padding: 0.6rem 0.75rem; border-bottom: 0.5px solid #f0ede8; color: #333; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #faf9f7; }
+  .score-pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.75rem; font-weight: 500; }
+  .score-high { background: #eaf3de; color: #3b6d11; }
+  .score-mid { background: #faeeda; color: #854f0b; }
+  .score-low { background: #fcebeb; color: #a32d2d; }
+
+  .empty-state { text-align: center; padding: 3rem; color: #aaa; }
+  .empty-state p { font-size: 0.9rem; margin-top: 0.5rem; }
+
+  .dim-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .dim-row-label { font-size: 0.82rem; color: #555; min-width: 120px; }
+  .dim-bar-bg { flex: 1; background: #f0eeff; border-radius: 6px; height: 10px; }
+  .dim-bar { background: linear-gradient(90deg, #5347c0, #7c6fef); border-radius: 6px; height: 10px; transition: width 0.6s; }
+  .dim-bar-val { font-size: 0.8rem; color: #888; min-width: 32px; text-align: right; }
+
+  .last-updated { font-size: 0.75rem; color: #bbb; text-align: right; margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Lecturer Dashboard</h1>
+    <p>Entrepreneurial Personality Profile — Live Results</p>
+  </div>
+  <button class="refresh-btn" onclick="loadData()" id="refreshBtn">↻ Refresh</button>
+</div>
+
+<div class="container">
+  <div class="last-updated" id="lastUpdated">Not yet loaded</div>
+
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-label">Responses</div><div class="stat-value" id="statN">—</div></div>
+    <div class="stat-card"><div class="stat-label">Avg PsyCap</div><div class="stat-value" id="statPsycap">—</div><div class="stat-sub">out of 6</div></div>
+    <div class="stat-card"><div class="stat-label">Avg Risk</div><div class="stat-value" id="statRisk">—</div><div class="stat-sub">out of 7</div></div>
+    <div class="stat-card"><div class="stat-label">Avg SEA</div><div class="stat-value" id="statSea">—</div><div class="stat-sub">out of 7</div></div>
+  </div>
+
+  <div class="charts-grid">
+    <div class="card">
+      <h2>Group averages by dimension</h2>
+      <div id="avgBars"></div>
+    </div>
+    <div class="card">
+      <h2>Group radar profile</h2>
+      <canvas id="radarChart" height="260"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>All respondents</h2>
+    <div id="tableWrap"></div>
+  </div>
+</div>
+
+<script>
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM2R6E2TQGM_lL8ZpHPAfD7iaendF6O4pDfk6hbYN_7PjeFA5u9HB6ZXr6mnwjzPV4/exec';
+
+const DIMS = [
+  { key: 'Efficacy',    label: 'Self-Efficacy', max: 6 },
+  { key: 'Hope',        label: 'Hope',          max: 6 },
+  { key: 'Resilience',  label: 'Resilience',    max: 6 },
+  { key: 'Optimism',    label: 'Optimism',      max: 6 },
+  { key: 'Risk',        label: 'Risk Propensity', max: 7 },
+  { key: 'Theory',      label: 'Theory',        max: 7 },
+  { key: 'Testing',     label: 'Testing',       max: 7 },
+  { key: 'Updating',    label: 'Updating',      max: 7 },
+];
+
+let radarChart = null;
+
+function avg(arr) {
+  if (!arr.length) return 0;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function scoreClass(val, max) {
+  const p = val / max;
+  if (p >= 0.75) return 'score-high';
+  if (p >= 0.5) return 'score-mid';
+  return 'score-low';
+}
+
+function pct(val, max) { return Math.round((val / max) * 100); }
+
+async function loadData() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spinning');
+  btn.textContent = '↻ Loading…';
+
+  try {
+    const res = await fetch(SCRIPT_URL + '?t=' + Date.now());
+    const raw = await res.json();
+
+    const data = raw.filter(r => r.Name && r.Name !== 'Name');
+
+    document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+
+    if (!data.length) {
+      showEmpty();
+      return;
+    }
+
+    renderStats(data);
+    renderAverages(data);
+    renderRadar(data);
+    renderTable(data);
+
+  } catch (err) {
+    document.getElementById('lastUpdated').textContent = 'Error loading data — check your Apps Script URL';
+    console.error(err);
+  } finally {
+    btn.classList.remove('spinning');
+    btn.textContent = '↻ Refresh';
+  }
+}
+
+function showEmpty() {
+  document.getElementById('statN').textContent = '0';
+  document.getElementById('tableWrap').innerHTML = `
+    <div class="empty-state">
+      <strong>No responses yet</strong>
+      <p>Results will appear here as students complete the survey.</p>
+    </div>`;
+}
+
+function renderStats(data) {
+  document.getElementById('statN').textContent = data.length;
+  document.getElementById('statPsycap').textContent = avg(data.map(r => parseFloat(r.PsyCap_Overall) || 0)).toFixed(1);
+  document.getElementById('statRisk').textContent = avg(data.map(r => parseFloat(r.Risk) || 0)).toFixed(1);
+  document.getElementById('statSea').textContent = avg(data.map(r => parseFloat(r.SEA_Overall) || 0)).toFixed(1);
+}
+
+function renderAverages(data) {
+  const wrap = document.getElementById('avgBars');
+  wrap.innerHTML = DIMS.map(d => {
+    const vals = data.map(r => parseFloat(r[d.key]) || 0);
+    const a = avg(vals);
+    const p = pct(a, d.max);
+    return `<div class="dim-row">
+      <span class="dim-row-label">${d.label}</span>
+      <div class="dim-bar-bg"><div class="dim-bar" style="width:${p}%"></div></div>
+      <span class="dim-bar-val">${a.toFixed(1)}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderRadar(data) {
+  const avgData = DIMS.map(d => {
+    const vals = data.map(r => parseFloat(r[d.key]) || 0);
+    return pct(avg(vals), d.max);
+  });
+
+  if (radarChart) radarChart.destroy();
+  const ctx = document.getElementById('radarChart').getContext('2d');
+  radarChart = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: DIMS.map(d => d.label),
+      datasets: [{
+        label: 'Class average',
+        data: avgData,
+        backgroundColor: 'rgba(83,71,192,0.15)',
+        borderColor: '#5347c0',
+        pointBackgroundColor: '#5347c0',
+        pointRadius: 4,
+      }]
+    },
+    options: {
+      scales: {
+        r: {
+          min: 0, max: 100,
+          ticks: { stepSize: 25, display: false },
+          grid: { color: '#eee' },
+          pointLabels: { font: { size: 10 } }
+        }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+function renderTable(data) {
+  const sorted = [...data].sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
+  const html = `<table>
+    <thead><tr>
+      <th>Name</th>
+      <th>PsyCap</th>
+      <th>Efficacy</th>
+      <th>Hope</th>
+      <th>Resilience</th>
+      <th>Optimism</th>
+      <th>Risk</th>
+      <th>SEA</th>
+      <th>Theory</th>
+      <th>Testing</th>
+      <th>Updating</th>
+      <th>Time</th>
+    </tr></thead>
+    <tbody>${sorted.map(r => {
+      const time = r.Timestamp ? new Date(r.Timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—';
+      function pill(val, max) {
+        const v = parseFloat(val) || 0;
+        return `<span class="score-pill ${scoreClass(v, max)}">${v.toFixed(1)}</span>`;
+      }
+      return `<tr>
+        <td><strong>${r.Name || '—'}</strong></td>
+        <td>${pill(r.PsyCap_Overall, 6)}</td>
+        <td>${pill(r.Efficacy, 6)}</td>
+        <td>${pill(r.Hope, 6)}</td>
+        <td>${pill(r.Resilience, 6)}</td>
+        <td>${pill(r.Optimism, 6)}</td>
+        <td>${pill(r.Risk, 7)}</td>
+        <td>${pill(r.SEA_Overall, 7)}</td>
+        <td>${pill(r.Theory, 7)}</td>
+        <td>${pill(r.Testing, 7)}</td>
+        <td>${pill(r.Updating, 7)}</td>
+        <td style="color:#bbb">${time}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+  document.getElementById('tableWrap').innerHTML = html;
+}
+
+loadData();
+setInterval(loadData, 30000);
+</script>
+</body>
+</html>
